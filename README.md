@@ -128,6 +128,7 @@ Here is an example of a request and the resulting image:
 
 ### Response
 
+![response](https://github.com/HimashaHerath/CodeToImg/assets/82162901/79724ecc-c3ac-472f-bdcd-e73efd06d2bf)
 
 
 ## License
