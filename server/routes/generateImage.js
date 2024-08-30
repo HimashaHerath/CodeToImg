@@ -1,111 +1,161 @@
-const express = require('express');
-const puppeteer = require('puppeteer');
-const hljs = require('highlight.js');
-const { languages, getBase64Icon } = require('../utils/utilities');
-const themes = require('../css/themes');
-const generateHtmlTemplate = require('../templates/htmlTemplate');
+const express = require("express");
+const puppeteer = require("puppeteer");
+const hljs = require("highlight.js");
+const prettier = require("prettier");
+const { languages, getBase64Icon } = require("../utils/utilities");
+const themes = require("../css/themes");
+const generateHtmlTemplate = require("../templates/htmlTemplate");
+const presets = require("../presets/presets");
 
 const router = express.Router();
 
-router.post('/generate-image', async (req, res) => {
-    const {
-        code,
-        language,
-        theme,
-        background,
-        padding,
-        filename,
-        fontSize,
-        fontFamily,
-        watermark,
-        heading,
-        description,
-        headingColor,
-        descriptionColor,
-        headingFontSize,
-        descriptionFontSize,
-        headingPadding,
-        descriptionPadding
-    } = req.body;
+// Mapping the language to a Prettier parser
+const prettierParsers = {
+  javascript: "babel", // JavaScript
+  html: "html", // HTML
+  css: "css", // CSS
+  json: "json", // JSON
+  typescript: "typescript", // TypeScript
+  markdown: "markdown", // Markdown
+  yaml: "yaml", // YAML
+  graphql: "graphql", // GraphQL
+  vue: "vue", // Vue.js components
+  // Add more mappings as needed
+};
 
-    if (!code || !language) {
-        return res.status(400).send('Code and language are required');
-    }
+router.post("/generate-image", async (req, res) => {
+  const {
+    code,
+    language,
+    theme,
+    background,
+    padding,
+    filename,
+    fontSize,
+    fontFamily,
+    watermark,
+    heading,
+    description,
+    headingColor,
+    descriptionColor,
+    headingFontSize,
+    descriptionFontSize,
+    headingPadding,
+    descriptionPadding,
+    preset, // Accept a preset from the request body
+  } = req.body;
 
-    // Find the logo URL based on the language
-    const languageConfig = languages.find(lang => lang.name.toLowerCase() === language.toLowerCase());
-    const logoUrl = languageConfig ? getBase64Icon(languageConfig.icon) : '';
+  if (!code || !language) {
+    return res.status(400).send("Code and language are required");
+  }
 
-    console.log('Logo URL:', logoUrl);  // Debugging: Print logo URL
+  try {
+    // Ensure the code is a string
+    const codeToFormat = typeof code === "string" ? code : String(code);
 
-    // Set default values if not provided
-    const selectedBackground = background || '#2e2e2e';
-    const headerBackground = '#333';
-    const selectedPadding = padding || '1rem';
-    const selectedFilename = filename || 'file.ts';
-    const selectedFontSize = fontSize || '16px';
-    const selectedFontFamily = fontFamily || 'Fira Code, monospace';
-    const selectedTheme = themes[theme] || themes.monokai;  // Default to monokai if theme is not found
-    const selectedWatermark = watermark || '';
-    const selectedHeading = heading || 'Code Snippet';
-    const selectedDescription = description || 'Description of the code snippet.';
-    const selectedHeadingColor = headingColor || '#fff';
-    const selectedDescriptionColor = descriptionColor || '#bbb';
-    const selectedHeadingFontSize = headingFontSize || '24px';
-    const selectedDescriptionFontSize = descriptionFontSize || '14px';
-    const selectedHeadingPadding = headingPadding || '10px 0';
-    const selectedDescriptionPadding = descriptionPadding || '0 0 20px';
+    // Determine the appropriate parser for Prettier
+    const parser = prettierParsers[language.toLowerCase()] || "babel";
 
+    console.log("Formatting code with Prettier using parser:", parser);
+
+    // Format the code using Prettier asynchronously
+    let formattedCode;
     try {
-        const highlightedCode = hljs.highlight(code, { language }).value;
-        const htmlContent = generateHtmlTemplate(
-            highlightedCode,
-            selectedBackground,
-            headerBackground,
-            selectedPadding,
-            selectedFilename,
-            selectedTheme,
-            selectedFontSize,
-            selectedFontFamily,
-            selectedWatermark,
-            selectedHeading,
-            selectedDescription,
-            selectedHeadingColor,
-            selectedDescriptionColor,
-            selectedHeadingFontSize,
-            selectedDescriptionFontSize,
-            selectedHeadingPadding,
-            selectedDescriptionPadding,
-            logoUrl
-        );
-
-        console.log('Generated HTML:', htmlContent);  // Debugging: Print generated HTML
-
-        const browser = await puppeteer.launch();
-        const page = await browser.newPage();
-
-        // Set viewport size and scale factor for high quality on phone screen size
-        await page.setViewport({
-            width: 375,  // Typical phone screen width
-            height: 812, // Typical phone screen height (iPhone X/11/12/13)
-            deviceScaleFactor: 3, // High device scale factor for better resolution
-        });
-
-        await page.setContent(htmlContent);
-        const imageBuffer = await page.screenshot({
-            fullPage: true,
-            type: 'png',
-            omitBackground: true,
-        });
-
-        await browser.close();
-
-        res.set('Content-Type', 'image/png');
-        res.send(imageBuffer);
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('An error occurred');
+      formattedCode = await prettier.format(codeToFormat, { parser });
+      console.log("Formatted code:", formattedCode); // Debugging log
+    } catch (formatError) {
+      console.error("Error formatting code with Prettier:", formatError);
+      formattedCode = codeToFormat; // Fallback to original code if formatting fails
     }
+
+    // Ensure the formatted code is a string
+    if (typeof formattedCode !== "string") {
+      console.error(
+        "Formatted code is not a string. Type:",
+        typeof formattedCode
+      );
+      throw new TypeError("Formatted code is not a string");
+    }
+
+    const languageConfig = languages.find(
+      (lang) => lang.name.toLowerCase() === language.toLowerCase()
+    );
+    const logoUrl = languageConfig ? getBase64Icon(languageConfig.icon) : "";
+
+    const selectedPreset = preset ? presets[preset] : {};
+
+    const selectedFontSize = selectedPreset.fontSize || fontSize || "16px";
+    const selectedHeadingFontSize =
+      selectedPreset.headingFontSize || headingFontSize || "24px";
+    const selectedDescriptionFontSize =
+      selectedPreset.descriptionFontSize || descriptionFontSize || "14px";
+
+    const selectedBackground = background || "#2e2e2e";
+    const headerBackground = "#333";
+    const selectedPadding = padding || "1rem";
+    const selectedFilename = filename || "file.ts";
+    const selectedFontFamily = fontFamily || "Fira Code, monospace";
+    const selectedTheme = themes[theme] || themes.monokai;
+    const selectedWatermark = watermark || "";
+    const selectedHeading = heading || "Code Snippet";
+    const selectedDescription =
+      description || "Description of the code snippet.";
+    const selectedHeadingColor = headingColor || "#fff";
+    const selectedDescriptionColor = descriptionColor || "#bbb";
+    const selectedHeadingPadding = headingPadding || "10px 0";
+    const selectedDescriptionPadding = descriptionPadding || "0 0 20px";
+
+    // Highlight the formatted code
+    const highlightedCode = hljs.highlight(formattedCode, { language }).value;
+
+    const htmlContent = generateHtmlTemplate(
+      highlightedCode,
+      selectedBackground,
+      headerBackground,
+      selectedPadding,
+      selectedFilename,
+      selectedTheme,
+      selectedFontSize,
+      selectedFontFamily,
+      selectedWatermark,
+      selectedHeading,
+      selectedDescription,
+      selectedHeadingColor,
+      selectedDescriptionColor,
+      selectedHeadingFontSize,
+      selectedDescriptionFontSize,
+      selectedHeadingPadding,
+      selectedDescriptionPadding,
+      logoUrl
+    );
+
+    console.log("Generated HTML:", htmlContent);
+
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+
+    await page.setViewport({
+      width: selectedPreset.viewportWidth || 375,
+      height: selectedPreset.viewportHeight || 812,
+      deviceScaleFactor: 3, // High device scale factor for better resolution
+    });
+
+    await page.setContent(htmlContent);
+
+    const imageBuffer = await page.screenshot({
+      fullPage: true,
+      type: "png",
+      omitBackground: true,
+    });
+
+    await browser.close();
+
+    res.set("Content-Type", "image/png");
+    res.send(imageBuffer);
+  } catch (error) {
+    console.error("An error occurred:", error);
+    res.status(500).send("An error occurred");
+  }
 });
 
 module.exports = router;
